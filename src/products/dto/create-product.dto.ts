@@ -30,4 +30,9 @@ export class CreateProductDto {
 
     @IsIn(['men', 'woman', 'kid', 'unisex'])
     gender: string;
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    tags: string [];
 }

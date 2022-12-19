@@ -1,12 +1,13 @@
+import { PaginationDto } from './../common/dtos/pagination.dto';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common/exceptions';
 import { Logger } from '@nestjs/common/services';
 import { InjectRepository } from '@nestjs/typeorm';
-import { iif } from 'rxjs';
 import { Repository } from 'typeorm';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './entities/product.entity';
+import { validate as isUuid } from 'uuid';
 
 @Injectable()
 export class ProductsService {
@@ -31,21 +32,53 @@ export class ProductsService {
     }
   }
 
-  async findAll() {
-    return await this.productRepository.find({});
+  async findAll(paginationDto: PaginationDto) {
+    const { limit = 0, offset = 0 } = paginationDto;
+
+    return await this.productRepository.find({
+      take: limit,
+      skip: offset
+    });
   }
 
-  async findOne(id: string) {
-    const product = await this.productRepository.findOneBy({ id });
+  async findOne(term: string) {
+
+    let product: Product;
+
+    if(isUuid(term)){
+      product = await this.productRepository.findOneBy({ id: term });
+    } else {
+      const queryBuilder = this.productRepository.createQueryBuilder();
+      product = await queryBuilder
+        .where('UPPER(title)=:title or slug=:slug', {
+          title: term.toUpperCase(),
+          slug: term.toLowerCase()
+        }).getOne();
+    }
 
     if(!product)
-      throw new NotFoundException(`Product not found with id ${id}`);
+      throw new NotFoundException(`Product not found with id ${term}`);
 
     return product;
   }
 
-  update(id: number, updateProductDto: UpdateProductDto) {
-    return `This action updates a #${id} product`;
+  async update(id: string, updateProductDto: UpdateProductDto) {
+
+    const product = await this.productRepository.preload({
+      id: id,
+      ...updateProductDto
+    });
+
+    if(!product)
+      throw new NotFoundException(`Product not found with id ${id}`);
+
+    try{
+      await this.productRepository.save(product);
+      return product;
+
+    } catch(error){
+      this.handleDBExceptions(error);
+    }
   }
 
   async remove(id: string) {
